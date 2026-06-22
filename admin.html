@@ -66,7 +66,7 @@
         <div class="dropzone" id="dropzone">
           <h3 class="dropzone__title">Drag images here, or click to browse</h3>
           <p class="dropzone__sub">Files commit to /images on the main branch</p>
-          <input type="file" id="file-input" accept="image/*" multiple />
+          <input type="file" id="file-input" accept="image/*,video/*" multiple />
         </div>
 
         <div class="queue" id="queue"></div>
@@ -76,6 +76,21 @@
         </div>
 
         <div class="log" id="log"></div>
+      </section>
+
+      <!-- Manage / Delete -->
+      <section class="admin-section">
+        <span class="admin-section__label">Manage existing files</span>
+        <p class="page-head__sub" style="margin-bottom: var(--space-sm);">
+          Everything currently in <code>/images</code>. Deleting here
+          removes it from the live repo immediately — there's no undo
+          beyond GitHub's own commit history.
+        </p>
+        <div class="admin-actions" style="margin-top: 0; margin-bottom: var(--space-sm);">
+          <button class="btn btn--ghost" id="refresh-manage">Refresh list</button>
+        </div>
+        <div class="queue" id="manage-list"></div>
+        <p class="token-status" id="manage-status"></p>
       </section>
 
     </div>

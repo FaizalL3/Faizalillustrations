@@ -13,7 +13,7 @@ const IMAGES_PATH = 'images'; // folder in the repo where uploads land
 // and reads admin.js can see the check below. The actual protection on
 // your repo is the GitHub token itself — keep that private.
 // ============================================
-const ADMIN_PASSWORD = 'Cheetahskurin45!'; // ← change this before you publish
+const ADMIN_PASSWORD = 'changeme'; // ← change this before you publish
 
 const gate = document.getElementById('admin-gate');
 const gateInput = document.getElementById('gate-input');
@@ -26,6 +26,7 @@ gateForm.addEventListener('submit', (e) => {
   if (gateInput.value === ADMIN_PASSWORD) {
     gate.style.display = 'none';
     adminMain.classList.add('is-visible');
+    if (typeof loadManageList === 'function') loadManageList();
   } else {
     gateError.textContent = 'Incorrect password.';
     gateInput.value = '';
@@ -128,10 +129,15 @@ function renderQueue() {
     const row = document.createElement('div');
     row.className = 'queue__item';
 
-    const thumb = document.createElement('img');
+    const isVideo = item.file.type.startsWith('video/');
+    const thumb = document.createElement(isVideo ? 'video' : 'img');
     thumb.className = 'queue__thumb';
     thumb.src = item.previewUrl;
-    thumb.alt = '';
+    if (isVideo) {
+      thumb.muted = true;
+    } else {
+      thumb.alt = '';
+    }
 
     const info = document.createElement('div');
     info.className = 'queue__info';
@@ -190,8 +196,8 @@ function labelForStatus(status) {
 
 function addFilesToQueue(fileList) {
   Array.from(fileList).forEach((file) => {
-    if (!file.type.startsWith('image/')) {
-      logLine(`Skipped "${file.name}" — not an image.`, 'is-error');
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      logLine(`Skipped "${file.name}" — not an image or video.`, 'is-error');
       return;
     }
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -333,3 +339,155 @@ uploadAllBtn.addEventListener('click', async () => {
   logLine('Batch complete.');
   uploadAllBtn.disabled = queue.every((q) => q.status !== 'pending');
 });
+
+// ============================================
+// Manage / Delete existing files
+// ============================================
+const manageList = document.getElementById('manage-list');
+const manageStatus = document.getElementById('manage-status');
+const refreshManageBtn = document.getElementById('refresh-manage');
+
+const RAW_BASE_FOR_THUMBS = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${IMAGES_PATH}`;
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
+
+async function fetchImagesFolder(token) {
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${IMAGES_PATH}?ref=${REPO_BRANCH}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (!res.ok) {
+    throw new Error(`Could not list /${IMAGES_PATH} (status ${res.status})`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data.filter((f) => f.type === 'file' && f.name !== '.gitkeep') : [];
+}
+
+async function deleteFileFromRepo(token, path, sha, message) {
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message,
+        sha,
+        branch: REPO_BRANCH,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.message || `GitHub API error (${res.status})`);
+  }
+  return res.json();
+}
+
+function renderManageList(files) {
+  manageList.innerHTML = '';
+
+  if (files.length === 0) {
+    manageStatus.textContent = 'No files in /images yet.';
+    manageStatus.className = 'token-status';
+    return;
+  }
+
+  manageStatus.textContent = '';
+
+  files.forEach((file) => {
+    const row = document.createElement('div');
+    row.className = 'manage-item';
+
+    const isImage = IMAGE_EXT_RE.test(file.name);
+    const thumb = document.createElement(isImage ? 'img' : 'video');
+    thumb.className = 'manage-item__thumb';
+    thumb.src = `${RAW_BASE_FOR_THUMBS}/${file.name}`;
+    if (!isImage) thumb.muted = true;
+
+    const info = document.createElement('div');
+    info.className = 'manage-item__info';
+
+    const name = document.createElement('div');
+    name.className = 'manage-item__name';
+    name.textContent = file.name;
+
+    const meta = document.createElement('div');
+    meta.className = 'manage-item__meta';
+    meta.textContent = file.size ? `${(file.size / 1024).toFixed(0)} KB` : '';
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'manage-item__delete';
+    deleteBtn.textContent = 'Delete';
+
+    let armed = false;
+    deleteBtn.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        deleteBtn.textContent = 'Confirm delete?';
+        deleteBtn.classList.add('is-confirm');
+        // disarm automatically after a few seconds so it can't be
+        // accidentally confirmed by a later unrelated click
+        setTimeout(() => {
+          if (armed) {
+            armed = false;
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.classList.remove('is-confirm');
+          }
+        }, 4000);
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        logLine('No GitHub token saved — paste one above first.', 'is-error');
+        return;
+      }
+
+      deleteBtn.classList.add('is-deleting');
+      deleteBtn.textContent = 'Deleting…';
+      logLine(`Deleting ${file.name}…`);
+
+      try {
+        await deleteFileFromRepo(token, file.path, file.sha, `Remove ${file.name} via admin panel`);
+        logLine(`Deleted ${file.name}`, 'is-success');
+        row.remove();
+        if (manageList.children.length === 0) {
+          manageStatus.textContent = 'No files in /images yet.';
+          manageStatus.className = 'token-status';
+        }
+      } catch (err) {
+        logLine(`Failed to delete ${file.name}: ${err.message}`, 'is-error');
+        deleteBtn.classList.remove('is-deleting');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.classList.remove('is-confirm');
+        armed = false;
+      }
+    });
+
+    row.appendChild(thumb);
+    row.appendChild(info);
+    row.appendChild(deleteBtn);
+    manageList.appendChild(row);
+  });
+}
+
+async function loadManageList() {
+  const token = getToken();
+  manageStatus.textContent = 'Loading…';
+  manageStatus.className = 'token-status';
+
+  try {
+    const files = await fetchImagesFolder(token);
+    renderManageList(files);
+  } catch (err) {
+    manageStatus.textContent = `Could not load files: ${err.message}`;
+    manageStatus.className = 'token-status is-error';
+  }
+}
+
+refreshManageBtn.addEventListener('click', loadManageList);
