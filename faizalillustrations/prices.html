@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prices — Faizal Illustrations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    @media (max-width: 900px) {
+      .price-grid { grid-template-columns: 1fr; }
+    }
+
+    .price-card {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s var(--ease);
+    }
+
+    .price-card:hover {
+      border-color: var(--coral);
+    }
+
+    .price-card__image {
+      aspect-ratio: 4 / 3;
+      background: #1f1e24;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .price-card__body {
+      padding: var(--space-md);
+    }
+
+    .price-card__name {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .price-card__amount {
+      font-size: 1.1rem;
+      color: var(--coral);
+      font-weight: 600;
+      margin-bottom: var(--space-xs);
+    }
+
+    .price-card__desc {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .extra-panel {
+      border: 1px dashed var(--muted);
+      border-radius: 4px;
+      padding: var(--space-md);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .extra-panel__text h3 {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .extra-panel__text p {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .extra-panel__amount {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--sage);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="nav__mark">Faizal Illustrations</a>
+    <button class="nav__toggle" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="prices.html" class="active">Prices</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <header class="page-head wrap">
+      <h1 class="page-head__title">Prices</h1>
+      <p class="page-head__sub">
+        Three base categories, plus an add-on for extra characters in
+        the same piece.
+      </p>
+    </header>
+
+    <section class="section">
+      <div class="wrap">
+
+        <div class="price-grid">
+          <div class="price-card">
+            <div class="price-card__image">Chibi example</div>
+            <div class="price-card__body">
+              <h3 class="price-card__name">Chibi</h3>
+              <p class="price-card__amount">$25</p>
+              <p class="price-card__desc">A small, stylized full-figure with exaggerated proportions.</p>
+            </div>
+          </div>
+
+          <div class="price-card">
+            <div class="price-card__image">Half body example</div>
+            <div class="price-card__body">
+              <h3 class="price-card__name">Half Body</h3>
+              <p class="price-card__amount">$55</p>
+              <p class="price-card__desc">From the waist up, with full detail on clothing and expression.</p>
+            </div>
+          </div>
+
+          <div class="price-card">
+            <div class="price-card__image">Full body example</div>
+            <div class="price-card__body">
+              <h3 class="price-card__name">Full Body</h3>
+              <p class="price-card__amount">$80</p>
+              <p class="price-card__desc">The complete figure, head to toe, with a full background option.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="extra-panel">
+          <div class="extra-panel__text">
+            <h3>Extra Characters</h3>
+            <p>Add another character to any piece above.</p>
+          </div>
+          <span class="extra-panel__amount">&minus;$10 off base price</span>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <span>&copy; 2026 Faizal Illustrations</span>
+    <a href="contact.html">Start a commission</a>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

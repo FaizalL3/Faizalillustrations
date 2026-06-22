@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faizal Illustrations — Custom Art Commissions</title>
+  <meta name="description" content="Custom illustration commissions by Faizal — chibi, half body, and full body pieces." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="nav__mark">Faizal Illustrations</a>
+    <button class="nav__toggle" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav__links">
+      <li><a href="index.html" class="active">Home</a></li>
+      <li><a href="projects.html">Projects</a></li>
+      <li><a href="prices.html">Prices</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <h1 class="hero__mark">Faizal Illustrations</h1>
+      <p class="hero__sub">
+        Custom character illustration — from quick chibi pieces to full
+        body commissions. Every drawing is built up in layers, start to
+        finish, and you can watch the whole process unfold.
+      </p>
+      <div class="hero__cta">
+        <a href="projects.html" class="btn btn--primary">View projects</a>
+        <a href="prices.html" class="btn btn--ghost">See prices</a>
+      </div>
+
+      <!-- Faizal: drop your story here -->
+      <div class="hero__story">
+        <!-- Your story goes here -->
+      </div>
+    </section>
+
+    <!-- ============ PROJECTS PREVIEW ============ -->
+    <section class="section" id="projects">
+      <div class="wrap">
+        <div class="section__head">
+          <div>
+            <span class="section__eyebrow">Selected work</span>
+            <h2 class="section__title">Projects</h2>
+          </div>
+        </div>
+
+        <div class="grid">
+          <!-- Faizal: set data-still / data-timelapse / data-title per card once assets exist -->
+          <div class="art-card" data-still="" data-timelapse="" data-title="Piece 01">
+            <div class="art-card__placeholder">Drawing 01</div>
+            <img class="art-card__media" alt="" />
+            <div class="art-card__progress"></div>
+            <div class="art-card__caption">Piece 01</div>
+          </div>
+
+          <div class="art-card" data-still="" data-timelapse="" data-title="Piece 02">
+            <div class="art-card__placeholder">Drawing 02</div>
+            <img class="art-card__media" alt="" />
+            <div class="art-card__progress"></div>
+            <div class="art-card__caption">Piece 02</div>
+          </div>
+
+          <div class="art-card" data-still="" data-timelapse="" data-title="Piece 03">
+            <div class="art-card__placeholder">Drawing 03</div>
+            <img class="art-card__media" alt="" />
+            <div class="art-card__progress"></div>
+            <div class="art-card__caption">Piece 03</div>
+          </div>
+        </div>
+
+        <div class="grid__footer">
+          <a href="projects.html" class="view-more">
+            View more
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRICES / CONTACT SPLIT ============ -->
+    <section class="section">
+      <div class="wrap">
+        <div class="split">
+          <div class="split__panel">
+            <h3 class="split__title">Prices</h3>
+            <p class="split__desc">
+              Chibi, half body, and full body commissions, plus add-ons
+              for extra characters.
+            </p>
+            <a href="prices.html" class="view-more">
+              View more
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+          </div>
+
+          <div class="split__panel">
+            <h3 class="split__title">Contact</h3>
+            <p class="split__desc">
+              Reach out on Discord or by email to start a commission or
+              ask a question.
+            </p>
+            <a href="contact.html" class="view-more">
+              View more
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer wrap">
+    <span>&copy; 2026 Faizal Illustrations</span>
+    <span>Commissions open</span>
+  </footer>
+
+  <!-- ============ LIGHTBOX ============ -->
+  <div class="lightbox" id="lightbox">
+    <button class="lightbox__close" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M2 2L16 16M16 2L2 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <div class="lightbox__frame"></div>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
