@@ -13,7 +13,7 @@ const IMAGES_PATH = 'images'; // folder in the repo where uploads land
 // and reads admin.js can see the check below. The actual protection on
 // your repo is the GitHub token itself — keep that private.
 // ============================================
-const ADMIN_PASSWORD = 'changeme'; // ← change this before you publish
+const ADMIN_PASSWORD = 'Cheetahskurin45!'; // ← change this before you publish
 
 const gate = document.getElementById('admin-gate');
 const gateInput = document.getElementById('gate-input');
