@@ -56,8 +56,10 @@
           </div>
         </div>
 
-        <div class="grid">
-          <!-- Faizal: set data-still / data-timelapse / data-title per card once assets exist -->
+        <div class="grid" id="home-gallery-grid">
+          <!-- Static placeholders below are shown until /images has real
+               files in it. Once gallery.js finds files, it replaces all
+               of this automatically — no need to edit these by hand. -->
           <div class="art-card" data-still="" data-timelapse="" data-title="Piece 01">
             <div class="art-card__placeholder">Drawing 01</div>
             <img class="art-card__media" alt="" />
@@ -144,5 +146,9 @@
   </div>
 
   <script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script>
+    renderGallery('#home-gallery-grid', 3);
+  </script>
 </body>
 </html>

@@ -9,19 +9,10 @@ if (navToggle && navLinks) {
     navLinks.classList.toggle('is-open');
   });
 
-  // close menu when a link is tapped
   navLinks.querySelectorAll('a').forEach((link) => {
     link.addEventListener('click', () => navLinks.classList.remove('is-open'));
   });
 }
-
-// ============================================
-// Art card data
-// Each card can carry: data-still (final drawing image)
-// and data-timelapse (video of it being drawn).
-// Both are left empty until real assets are uploaded —
-// the placeholder text shows until a src is set.
-// ============================================
 
 // ============================================
 // Lightbox
@@ -92,47 +83,9 @@ function closeLightbox() {
   if (!lightbox) return;
   lightbox.classList.remove('is-open');
   document.body.style.overflow = '';
-  // stop any playing video
   const video = lightboxFrame.querySelector('video');
   if (video) video.pause();
 }
-
-document.querySelectorAll('.art-card').forEach((card) => {
-  card.addEventListener('click', () => openLightbox(card));
-
-  // keyboard support
-  card.setAttribute('tabindex', '0');
-  card.setAttribute('role', 'button');
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      openLightbox(card);
-    }
-  });
-
-  // hover-to-play after 5s (matches the CSS sketch-reveal timing)
-  let hoverTimer = null;
-
-  card.addEventListener('mouseenter', () => {
-    hoverTimer = setTimeout(() => {
-      const timelapse = card.dataset.timelapse;
-      const mediaEl = card.querySelector('.art-card__media');
-      if (timelapse && mediaEl && mediaEl.tagName === 'VIDEO') {
-        mediaEl.currentTime = 0;
-        mediaEl.play();
-      }
-    }, 5000);
-  });
-
-  card.addEventListener('mouseleave', () => {
-    clearTimeout(hoverTimer);
-    const mediaEl = card.querySelector('.art-card__media');
-    if (mediaEl && mediaEl.tagName === 'VIDEO') {
-      mediaEl.pause();
-      mediaEl.currentTime = 0;
-    }
-  });
-});
 
 if (lightboxClose) {
   lightboxClose.addEventListener('click', closeLightbox);
@@ -147,3 +100,76 @@ if (lightbox) {
     if (e.key === 'Escape') closeLightbox();
   });
 }
+
+// ============================================
+// Art card interaction — click to open lightbox,
+// hover 5s to swap the still image for the timelapse video.
+//
+// Exposed as a named function so gallery.js can re-run it on
+// cards it builds dynamically after fetching /images from GitHub.
+// ============================================
+function attachArtCardBehavior(cards) {
+  cards.forEach((card) => {
+    // avoid double-binding if this card was already wired up
+    if (card.dataset.bound === 'true') return;
+    card.dataset.bound = 'true';
+
+    card.addEventListener('click', () => openLightbox(card));
+
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('role', 'button');
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openLightbox(card);
+      }
+    });
+
+    let hoverTimer = null;
+
+    card.addEventListener('mouseenter', () => {
+      const timelapse = card.dataset.timelapse;
+      if (!timelapse) return;
+
+      hoverTimer = setTimeout(() => {
+        const mediaEl = card.querySelector('.art-card__media');
+        if (!mediaEl) return;
+
+        // swap the still <img> for a <video> playing the timelapse
+        if (mediaEl.tagName !== 'VIDEO') {
+          const video = document.createElement('video');
+          video.className = 'art-card__media is-visible';
+          video.src = timelapse;
+          video.muted = true;
+          video.loop = true;
+          video.playsInline = true;
+          mediaEl.replaceWith(video);
+          video.play().catch(() => {});
+        } else {
+          mediaEl.currentTime = 0;
+          mediaEl.play().catch(() => {});
+        }
+      }, 5000);
+    });
+
+    card.addEventListener('mouseleave', () => {
+      clearTimeout(hoverTimer);
+      const mediaEl = card.querySelector('.art-card__media');
+      if (mediaEl && mediaEl.tagName === 'VIDEO') {
+        const still = card.dataset.still;
+        if (still) {
+          const img = document.createElement('img');
+          img.className = 'art-card__media is-visible';
+          img.src = still;
+          img.alt = card.dataset.title || '';
+          mediaEl.replaceWith(img);
+        } else {
+          mediaEl.pause();
+        }
+      }
+    });
+  });
+}
+
+// wire up any cards already present in the static HTML on load
+attachArtCardBehavior(document.querySelectorAll('.art-card'));

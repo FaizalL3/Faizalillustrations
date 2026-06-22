@@ -35,7 +35,7 @@
 
     <section class="section">
       <div class="wrap">
-        <div class="grid">
+        <div class="grid" id="projects-gallery-grid">
 
           <div class="art-card" data-still="" data-timelapse="" data-title="Piece 01">
             <div class="art-card__placeholder">Drawing 01</div>
@@ -113,5 +113,9 @@
   </div>
 
   <script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script>
+    renderGallery('#projects-gallery-grid', 8);
+  </script>
 </body>
 </html>
