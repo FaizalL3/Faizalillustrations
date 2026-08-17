@@ -82,6 +82,23 @@ async function loadGalleryPieces() {
   return pieces;
 }
 
+/**
+ * Reads the curated picks saved from admin.html. Returns an array of
+ * piece keys, in the order they were featured. Missing file (nobody's
+ * picked anything yet) or a fetch error just means "no picks" — the
+ * caller falls back to newest-first in that case.
+ */
+async function loadFeaturedKeys() {
+  try {
+    const res = await fetch(`${RAW_BASE}/featured.json`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 function buildArtCard(piece) {
   const card = document.createElement('div');
   card.className = 'art-card';
@@ -100,10 +117,15 @@ function buildArtCard(piece) {
 
 /**
  * Renders pieces into a grid container, capped at `limit`.
- * Falls back silently (leaves existing placeholder markup) if no pieces found,
- * so the site never shows a broken empty page before any art is uploaded.
+ * When useFeatured is true (homepage), shows only the pieces picked
+ * via the admin panel's "Featured" checkboxes, in the order they were
+ * picked. If nothing has been featured yet, falls back to newest-first
+ * so the homepage never looks empty before you've curated anything.
+ * Falls back silently (leaves existing placeholder markup) if no
+ * pieces found at all, so the site never shows a broken empty page
+ * before any art is uploaded.
  */
-async function renderGallery(containerSelector, limit) {
+async function renderGallery(containerSelector, limit, useFeatured) {
   const container = document.querySelector(containerSelector);
   if (!container) return;
 
@@ -117,7 +139,17 @@ async function renderGallery(containerSelector, limit) {
 
   if (pieces.length === 0) return; // keep static placeholder cards as-is
 
-  const toShow = pieces.slice(0, limit);
+  let toShow = pieces.slice(0, limit);
+
+  if (useFeatured) {
+    const featuredKeys = await loadFeaturedKeys();
+    if (featuredKeys.length > 0) {
+      const byKey = new Map(pieces.map((p) => [p.key, p]));
+      const picked = featuredKeys.map((k) => byKey.get(k)).filter(Boolean);
+      if (picked.length > 0) toShow = picked.slice(0, limit);
+    }
+  }
+
   container.innerHTML = '';
   toShow.forEach((piece) => container.appendChild(buildArtCard(piece)));
 

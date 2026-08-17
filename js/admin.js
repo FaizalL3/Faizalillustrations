@@ -13,7 +13,7 @@ const IMAGES_PATH = 'images'; // folder in the repo where uploads land
 // and reads admin.js can see the check below. The actual protection on
 // your repo is the GitHub token itself — keep that private.
 // ============================================
-const ADMIN_PASSWORD = 'Cheetahskurin45!'; // ← change this before you publish
+const ADMIN_PASSWORD = 'changeme'; // ← change this before you publish
 
 const gate = document.getElementById('admin-gate');
 const gateInput = document.getElementById('gate-input');
@@ -349,6 +349,37 @@ const refreshManageBtn = document.getElementById('refresh-manage');
 
 const RAW_BASE_FOR_THUMBS = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${IMAGES_PATH}`;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
+const FEATURED_PATH = `${IMAGES_PATH}/featured.json`;
+const MAX_FEATURED = 3; // matches the homepage preview grid size
+
+function baseKeyFromFilename(filename) {
+  const idx = filename.lastIndexOf('.');
+  const base = idx === -1 ? filename : filename.slice(0, idx);
+  return base.toLowerCase();
+}
+
+async function loadFeaturedKeys(token) {
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FEATURED_PATH}?ref=${REPO_BRANCH}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (res.status === 404) return []; // no picks made yet — that's normal
+  if (!res.ok) throw new Error(`Could not load featured.json (status ${res.status})`);
+  const data = await res.json();
+  try {
+    const decoded = decodeURIComponent(escape(atob(data.content)));
+    const parsed = JSON.parse(decoded);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveFeaturedKeys(token, keys) {
+  const json = JSON.stringify(keys, null, 2);
+  const base64 = btoa(unescape(encodeURIComponent(json)));
+  await commitFileToRepo(token, FEATURED_PATH, base64, 'Update featured pieces via admin panel');
+}
 
 async function fetchImagesFolder(token) {
   const res = await fetch(
@@ -359,7 +390,9 @@ async function fetchImagesFolder(token) {
     throw new Error(`Could not list /${IMAGES_PATH} (status ${res.status})`);
   }
   const data = await res.json();
-  return Array.isArray(data) ? data.filter((f) => f.type === 'file' && f.name !== '.gitkeep') : [];
+  return Array.isArray(data)
+    ? data.filter((f) => f.type === 'file' && f.name !== '.gitkeep' && f.name !== 'featured.json')
+    : [];
 }
 
 async function deleteFileFromRepo(token, path, sha, message) {
@@ -385,7 +418,7 @@ async function deleteFileFromRepo(token, path, sha, message) {
   return res.json();
 }
 
-function renderManageList(files) {
+function renderManageList(files, featuredKeys) {
   manageList.innerHTML = '';
 
   if (files.length === 0) {
@@ -395,6 +428,7 @@ function renderManageList(files) {
   }
 
   manageStatus.textContent = '';
+  let currentFeatured = featuredKeys.slice();
 
   files.forEach((file) => {
     const row = document.createElement('div');
@@ -419,6 +453,62 @@ function renderManageList(files) {
 
     info.appendChild(name);
     info.appendChild(meta);
+
+    // Featured checkbox — only stills get one; a timelapse video rides
+    // along with its still automatically, it isn't picked separately.
+    let featuredLabel = null;
+    if (isImage) {
+      const key = baseKeyFromFilename(file.name);
+      featuredLabel = document.createElement('label');
+      featuredLabel.className = 'manage-item__featured';
+      featuredLabel.style.display = 'flex';
+      featuredLabel.style.alignItems = 'center';
+      featuredLabel.style.gap = '0.4rem';
+      featuredLabel.style.fontSize = '0.8rem';
+      featuredLabel.style.color = 'var(--muted)';
+      featuredLabel.style.whiteSpace = 'nowrap';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = currentFeatured.includes(key);
+
+      checkbox.addEventListener('change', async () => {
+        const token = getToken();
+        if (!token) {
+          logLine('No GitHub token saved — paste one above first.', 'is-error');
+          checkbox.checked = !checkbox.checked;
+          return;
+        }
+
+        if (checkbox.checked && currentFeatured.length >= MAX_FEATURED && !currentFeatured.includes(key)) {
+          logLine(`Only ${MAX_FEATURED} pieces can be featured at once — uncheck one first.`, 'is-error');
+          checkbox.checked = false;
+          return;
+        }
+
+        const nextFeatured = checkbox.checked
+          ? [...currentFeatured, key]
+          : currentFeatured.filter((k) => k !== key);
+
+        checkbox.disabled = true;
+        try {
+          await saveFeaturedKeys(token, nextFeatured);
+          currentFeatured = nextFeatured;
+          logLine(
+            checkbox.checked ? `Featured ${file.name} on homepage.` : `Removed ${file.name} from homepage.`,
+            'is-success'
+          );
+        } catch (err) {
+          logLine(`Failed to update featured pieces: ${err.message}`, 'is-error');
+          checkbox.checked = !checkbox.checked; // revert on failure
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+
+      featuredLabel.appendChild(checkbox);
+      featuredLabel.appendChild(document.createTextNode('Featured'));
+    }
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'manage-item__delete';
@@ -471,6 +561,7 @@ function renderManageList(files) {
 
     row.appendChild(thumb);
     row.appendChild(info);
+    if (featuredLabel) row.appendChild(featuredLabel);
     row.appendChild(deleteBtn);
     manageList.appendChild(row);
   });
@@ -482,8 +573,11 @@ async function loadManageList() {
   manageStatus.className = 'token-status';
 
   try {
-    const files = await fetchImagesFolder(token);
-    renderManageList(files);
+    const [files, featuredKeys] = await Promise.all([
+      fetchImagesFolder(token),
+      loadFeaturedKeys(token).catch(() => []),
+    ]);
+    renderManageList(files, featuredKeys);
   } catch (err) {
     manageStatus.textContent = `Could not load files: ${err.message}`;
     manageStatus.className = 'token-status is-error';
