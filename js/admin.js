@@ -350,6 +350,7 @@ const refreshManageBtn = document.getElementById('refresh-manage');
 const RAW_BASE_FOR_THUMBS = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${IMAGES_PATH}`;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
 const FEATURED_PATH = `${IMAGES_PATH}/featured.json`;
+const VISIBLE_PATH = `${IMAGES_PATH}/visible.json`;
 const MAX_FEATURED = 3; // matches the homepage preview grid size
 
 function baseKeyFromFilename(filename) {
@@ -358,13 +359,13 @@ function baseKeyFromFilename(filename) {
   return base.toLowerCase();
 }
 
-async function loadFeaturedKeys(token) {
+async function loadKeyListFile(token, path) {
   const res = await fetch(
-    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FEATURED_PATH}?ref=${REPO_BRANCH}`,
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${REPO_BRANCH}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : {} }
   );
   if (res.status === 404) return []; // no picks made yet — that's normal
-  if (!res.ok) throw new Error(`Could not load featured.json (status ${res.status})`);
+  if (!res.ok) throw new Error(`Could not load ${path} (status ${res.status})`);
   const data = await res.json();
   try {
     const decoded = decodeURIComponent(escape(atob(data.content)));
@@ -375,10 +376,26 @@ async function loadFeaturedKeys(token) {
   }
 }
 
-async function saveFeaturedKeys(token, keys) {
+async function saveKeyListFile(token, path, keys, message) {
   const json = JSON.stringify(keys, null, 2);
   const base64 = btoa(unescape(encodeURIComponent(json)));
-  await commitFileToRepo(token, FEATURED_PATH, base64, 'Update featured pieces via admin panel');
+  await commitFileToRepo(token, path, base64, message);
+}
+
+async function loadFeaturedKeys(token) {
+  return loadKeyListFile(token, FEATURED_PATH);
+}
+
+async function saveFeaturedKeys(token, keys) {
+  return saveKeyListFile(token, FEATURED_PATH, keys, 'Update featured pieces via admin panel');
+}
+
+async function loadVisibleKeys(token) {
+  return loadKeyListFile(token, VISIBLE_PATH);
+}
+
+async function saveVisibleKeys(token, keys) {
+  return saveKeyListFile(token, VISIBLE_PATH, keys, 'Update visible pieces via admin panel');
 }
 
 async function fetchImagesFolder(token) {
@@ -391,7 +408,9 @@ async function fetchImagesFolder(token) {
   }
   const data = await res.json();
   return Array.isArray(data)
-    ? data.filter((f) => f.type === 'file' && f.name !== '.gitkeep' && f.name !== 'featured.json')
+    ? data.filter(
+        (f) => f.type === 'file' && f.name !== '.gitkeep' && f.name !== 'featured.json' && f.name !== 'visible.json'
+      )
     : [];
 }
 
@@ -418,7 +437,64 @@ async function deleteFileFromRepo(token, path, sha, message) {
   return res.json();
 }
 
-function renderManageList(files, featuredKeys) {
+/**
+ * Builds a labeled checkbox that toggles membership of `key` in a
+ * key-list file (featured.json or visible.json), committing the
+ * change immediately on click. `currentKeysRef` is a single-element
+ * array used as a mutable box so every checkbox on the page shares
+ * the same up-to-date list without needing a shared outer variable.
+ */
+function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onLabel, offLabel }) {
+  const wrap = document.createElement('label');
+  wrap.className = 'manage-item__toggle';
+  wrap.style.display = 'flex';
+  wrap.style.alignItems = 'center';
+  wrap.style.gap = '0.4rem';
+  wrap.style.fontSize = '0.8rem';
+  wrap.style.color = 'var(--muted)';
+  wrap.style.whiteSpace = 'nowrap';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = currentKeysRef[0].includes(key);
+
+  checkbox.addEventListener('change', async () => {
+    const token = getToken();
+    if (!token) {
+      logLine('No GitHub token saved — paste one above first.', 'is-error');
+      checkbox.checked = !checkbox.checked;
+      return;
+    }
+
+    const current = currentKeysRef[0];
+
+    if (checkbox.checked && maxCount && current.length >= maxCount && !current.includes(key)) {
+      logLine(`Only ${maxCount} pieces can be ${label.toLowerCase()} at once — uncheck one first.`, 'is-error');
+      checkbox.checked = false;
+      return;
+    }
+
+    const next = checkbox.checked ? [...current, key] : current.filter((k) => k !== key);
+
+    checkbox.disabled = true;
+    try {
+      await saveFn(token, next);
+      currentKeysRef[0] = next;
+      logLine(checkbox.checked ? onLabel : offLabel, 'is-success');
+    } catch (err) {
+      logLine(`Failed to update ${label.toLowerCase()}: ${err.message}`, 'is-error');
+      checkbox.checked = !checkbox.checked; // revert on failure
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+
+  wrap.appendChild(checkbox);
+  wrap.appendChild(document.createTextNode(label));
+  return wrap;
+}
+
+function renderManageList(files, featuredKeys, visibleKeys) {
   manageList.innerHTML = '';
 
   if (files.length === 0) {
@@ -428,7 +504,9 @@ function renderManageList(files, featuredKeys) {
   }
 
   manageStatus.textContent = '';
-  let currentFeatured = featuredKeys.slice();
+  // boxed so the shared checkbox helper can update these in place
+  const currentFeaturedRef = [featuredKeys.slice()];
+  const currentVisibleRef = [visibleKeys.slice()];
 
   files.forEach((file) => {
     const row = document.createElement('div');
@@ -454,60 +532,36 @@ function renderManageList(files, featuredKeys) {
     info.appendChild(name);
     info.appendChild(meta);
 
-    // Featured checkbox — only stills get one; a timelapse video rides
-    // along with its still automatically, it isn't picked separately.
+    // Featured + Visible checkboxes — only stills get one; a timelapse
+    // video rides along with its still automatically and isn't picked
+    // separately.
+    //   Featured -> shows in the homepage's 3-card preview (max 3)
+    //   Visible  -> shows on the full Projects page at all (no cap;
+    //               unchecked pieces stay hidden from Projects entirely)
     let featuredLabel = null;
+    let visibleLabel = null;
     if (isImage) {
       const key = baseKeyFromFilename(file.name);
-      featuredLabel = document.createElement('label');
-      featuredLabel.className = 'manage-item__featured';
-      featuredLabel.style.display = 'flex';
-      featuredLabel.style.alignItems = 'center';
-      featuredLabel.style.gap = '0.4rem';
-      featuredLabel.style.fontSize = '0.8rem';
-      featuredLabel.style.color = 'var(--muted)';
-      featuredLabel.style.whiteSpace = 'nowrap';
 
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = currentFeatured.includes(key);
-
-      checkbox.addEventListener('change', async () => {
-        const token = getToken();
-        if (!token) {
-          logLine('No GitHub token saved — paste one above first.', 'is-error');
-          checkbox.checked = !checkbox.checked;
-          return;
-        }
-
-        if (checkbox.checked && currentFeatured.length >= MAX_FEATURED && !currentFeatured.includes(key)) {
-          logLine(`Only ${MAX_FEATURED} pieces can be featured at once — uncheck one first.`, 'is-error');
-          checkbox.checked = false;
-          return;
-        }
-
-        const nextFeatured = checkbox.checked
-          ? [...currentFeatured, key]
-          : currentFeatured.filter((k) => k !== key);
-
-        checkbox.disabled = true;
-        try {
-          await saveFeaturedKeys(token, nextFeatured);
-          currentFeatured = nextFeatured;
-          logLine(
-            checkbox.checked ? `Featured ${file.name} on homepage.` : `Removed ${file.name} from homepage.`,
-            'is-success'
-          );
-        } catch (err) {
-          logLine(`Failed to update featured pieces: ${err.message}`, 'is-error');
-          checkbox.checked = !checkbox.checked; // revert on failure
-        } finally {
-          checkbox.disabled = false;
-        }
+      featuredLabel = buildToggleCheckbox({
+        label: 'Featured',
+        key,
+        currentKeysRef: currentFeaturedRef,
+        saveFn: saveFeaturedKeys,
+        maxCount: MAX_FEATURED,
+        onLabel: `Featured ${file.name} on the homepage.`,
+        offLabel: `Removed ${file.name} from the homepage.`,
       });
 
-      featuredLabel.appendChild(checkbox);
-      featuredLabel.appendChild(document.createTextNode('Featured'));
+      visibleLabel = buildToggleCheckbox({
+        label: 'Visible',
+        key,
+        currentKeysRef: currentVisibleRef,
+        saveFn: saveVisibleKeys,
+        maxCount: null,
+        onLabel: `${file.name} is now visible on the Projects page.`,
+        offLabel: `${file.name} is now hidden from the Projects page.`,
+      });
     }
 
     const deleteBtn = document.createElement('button');
@@ -562,6 +616,7 @@ function renderManageList(files, featuredKeys) {
     row.appendChild(thumb);
     row.appendChild(info);
     if (featuredLabel) row.appendChild(featuredLabel);
+    if (visibleLabel) row.appendChild(visibleLabel);
     row.appendChild(deleteBtn);
     manageList.appendChild(row);
   });
@@ -573,11 +628,12 @@ async function loadManageList() {
   manageStatus.className = 'token-status';
 
   try {
-    const [files, featuredKeys] = await Promise.all([
+    const [files, featuredKeys, visibleKeys] = await Promise.all([
       fetchImagesFolder(token),
       loadFeaturedKeys(token).catch(() => []),
+      loadVisibleKeys(token).catch(() => []),
     ]);
-    renderManageList(files, featuredKeys);
+    renderManageList(files, featuredKeys, visibleKeys);
   } catch (err) {
     manageStatus.textContent = `Could not load files: ${err.message}`;
     manageStatus.className = 'token-status is-error';

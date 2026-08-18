@@ -84,19 +84,26 @@ async function loadGalleryPieces() {
 
 /**
  * Reads the curated picks saved from admin.html. Returns an array of
- * piece keys, in the order they were featured. Missing file (nobody's
- * picked anything yet) or a fetch error just means "no picks" — the
- * caller falls back to newest-first in that case.
+ * piece keys. Missing file (nobody's picked anything yet) or a fetch
+ * error just means "no picks" — callers fall back to sensible defaults.
  */
-async function loadFeaturedKeys() {
+async function loadKeyListFromRaw(filename) {
   try {
-    const res = await fetch(`${RAW_BASE}/featured.json`, { cache: 'no-store' });
+    const res = await fetch(`${RAW_BASE}/${filename}`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }
+}
+
+function loadFeaturedKeys() {
+  return loadKeyListFromRaw('featured.json');
+}
+
+function loadVisibleKeys() {
+  return loadKeyListFromRaw('visible.json');
 }
 
 function buildArtCard(piece) {
@@ -117,15 +124,25 @@ function buildArtCard(piece) {
 
 /**
  * Renders pieces into a grid container, capped at `limit`.
- * When useFeatured is true (homepage), shows only the pieces picked
- * via the admin panel's "Featured" checkboxes, in the order they were
- * picked. If nothing has been featured yet, falls back to newest-first
- * so the homepage never looks empty before you've curated anything.
- * Falls back silently (leaves existing placeholder markup) if no
- * pieces found at all, so the site never shows a broken empty page
- * before any art is uploaded.
+ *
+ * mode controls which pieces are eligible:
+ *   'featured' (homepage) — only pieces checked "Featured" in admin.html,
+ *                            in the order they were picked. Falls back to
+ *                            newest-first if nothing has been featured yet,
+ *                            so the homepage isn't empty before you curate it.
+ *   'visible'  (projects page) — only pieces checked "Visible" in admin.html.
+ *                            This is opt-in: nothing shows here until you've
+ *                            explicitly marked pieces visible. No fallback,
+ *                            since showing un-vetted uploads by default isn't
+ *                            what you asked for.
+ *   'all' (default)      — every uploaded piece, newest-first. Used if this
+ *                            is called without a mode.
+ *
+ * Falls back silently (leaves existing placeholder markup) only when NO
+ * images have been uploaded at all yet, so the site never shows a broken
+ * empty page before any art exists in the repo.
  */
-async function renderGallery(containerSelector, limit, useFeatured) {
+async function renderGallery(containerSelector, limit, mode) {
   const container = document.querySelector(containerSelector);
   if (!container) return;
 
@@ -139,18 +156,32 @@ async function renderGallery(containerSelector, limit, useFeatured) {
 
   if (pieces.length === 0) return; // keep static placeholder cards as-is
 
-  let toShow = pieces.slice(0, limit);
+  let toShow;
 
-  if (useFeatured) {
+  if (mode === 'featured') {
     const featuredKeys = await loadFeaturedKeys();
-    if (featuredKeys.length > 0) {
-      const byKey = new Map(pieces.map((p) => [p.key, p]));
-      const picked = featuredKeys.map((k) => byKey.get(k)).filter(Boolean);
-      if (picked.length > 0) toShow = picked.slice(0, limit);
-    }
+    const byKey = new Map(pieces.map((p) => [p.key, p]));
+    const picked = featuredKeys.map((k) => byKey.get(k)).filter(Boolean);
+    toShow = picked.length > 0 ? picked.slice(0, limit) : pieces.slice(0, limit);
+  } else if (mode === 'visible') {
+    const visibleKeys = await loadVisibleKeys();
+    const visibleSet = new Set(visibleKeys);
+    toShow = pieces.filter((p) => visibleSet.has(p.key)).slice(0, limit);
+  } else {
+    toShow = pieces.slice(0, limit);
   }
 
   container.innerHTML = '';
+
+  if (toShow.length === 0) {
+    const empty = document.createElement('p');
+    empty.style.color = 'var(--muted)';
+    empty.style.gridColumn = '1 / -1';
+    empty.textContent = 'No pieces published yet — check back soon.';
+    container.appendChild(empty);
+    return;
+  }
+
   toShow.forEach((piece) => container.appendChild(buildArtCard(piece)));
 
   // re-attach the same interaction behavior main.js uses
