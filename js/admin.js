@@ -640,6 +640,33 @@ function renderManageList(files, featuredKeys, visibleKeys) {
           manageStatus.textContent = 'No files in /images yet.';
           manageStatus.className = 'token-status';
         }
+
+        // A deleted image can't stay marked Featured/Visible — clean up
+        // its key from both lists so it doesn't linger as a "ghost"
+        // entry that silently counts against the featured limit.
+        if (isImage) {
+          const deletedKey = baseKeyFromFilename(file.name);
+          if (currentFeaturedRef[0].includes(deletedKey)) {
+            const cleaned = currentFeaturedRef[0].filter((k) => k !== deletedKey);
+            featuredQueueRef[0] = featuredQueueRef[0]
+              .catch(() => {})
+              .then(() => saveFeaturedKeys(token, cleaned))
+              .then(() => {
+                currentFeaturedRef[0] = cleaned;
+              })
+              .catch((err) => logLine(`Failed to clean up featured entry for ${file.name}: ${err.message}`, 'is-error'));
+          }
+          if (currentVisibleRef[0].includes(deletedKey)) {
+            const cleaned = currentVisibleRef[0].filter((k) => k !== deletedKey);
+            visibleQueueRef[0] = visibleQueueRef[0]
+              .catch(() => {})
+              .then(() => saveVisibleKeys(token, cleaned))
+              .then(() => {
+                currentVisibleRef[0] = cleaned;
+              })
+              .catch((err) => logLine(`Failed to clean up visible entry for ${file.name}: ${err.message}`, 'is-error'));
+          }
+        }
       } catch (err) {
         logLine(`Failed to delete ${file.name}: ${err.message}`, 'is-error');
         deleteBtn.classList.remove('is-deleting');
@@ -669,7 +696,31 @@ async function loadManageList() {
       loadFeaturedKeys(token).catch(() => []),
       loadVisibleKeys(token).catch(() => []),
     ]);
-    renderManageList(files, featuredKeys, visibleKeys);
+
+    // Self-heal: drop any stored key that no longer matches a real image
+    // (e.g. left behind by a file deleted before this cleanup existed,
+    // or deleted outside admin.html entirely). These "ghost" entries
+    // otherwise silently count against the featured limit even though
+    // nothing on screen shows them checked.
+    const validKeys = new Set(files.filter((f) => IMAGE_EXT_RE.test(f.name)).map((f) => baseKeyFromFilename(f.name)));
+
+    const cleanedFeatured = featuredKeys.filter((k) => validKeys.has(k));
+    const cleanedVisible = visibleKeys.filter((k) => validKeys.has(k));
+
+    if (token && cleanedFeatured.length !== featuredKeys.length) {
+      const removed = featuredKeys.length - cleanedFeatured.length;
+      saveFeaturedKeys(token, cleanedFeatured)
+        .then(() => logLine(`Cleaned up ${removed} stale featured entr${removed === 1 ? 'y' : 'ies'}.`, 'is-success'))
+        .catch((err) => logLine(`Could not clean up stale featured entries: ${err.message}`, 'is-error'));
+    }
+    if (token && cleanedVisible.length !== visibleKeys.length) {
+      const removed = visibleKeys.length - cleanedVisible.length;
+      saveVisibleKeys(token, cleanedVisible)
+        .then(() => logLine(`Cleaned up ${removed} stale visible entr${removed === 1 ? 'y' : 'ies'}.`, 'is-success'))
+        .catch((err) => logLine(`Could not clean up stale visible entries: ${err.message}`, 'is-error'));
+    }
+
+    renderManageList(files, cleanedFeatured, cleanedVisible);
   } catch (err) {
     manageStatus.textContent = `Could not load files: ${err.message}`;
     manageStatus.className = 'token-status is-error';
