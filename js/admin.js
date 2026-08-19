@@ -251,17 +251,24 @@ function fileToBase64(file) {
   });
 }
 
-async function commitFileToRepo(token, path, base64Content, message) {
-  // Check if a file already exists at this path to decide create vs update
-  let sha = null;
-  const checkRes = await fetch(
-    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${REPO_BRANCH}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+async function fetchCurrentSha(token, path) {
+  // cache: 'no-store' plus a cache-busting query param — GitHub's API
+  // shouldn't be cached by the browser, but belt-and-suspenders here
+  // since a stale SHA is exactly what causes "does not match" errors.
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${REPO_BRANCH}&_=${Date.now()}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    }
   );
-  if (checkRes.ok) {
-    const data = await checkRes.json();
-    sha = data.sha;
-  }
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.sha;
+}
+
+async function commitFileToRepo(token, path, base64Content, message, _isRetry) {
+  const sha = await fetchCurrentSha(token, path);
 
   const body = {
     message,
@@ -284,7 +291,16 @@ async function commitFileToRepo(token, path, base64Content, message) {
 
   if (!putRes.ok) {
     const errBody = await putRes.json().catch(() => ({}));
-    throw new Error(errBody.message || `GitHub API error (${putRes.status})`);
+    const message409 = errBody.message || '';
+
+    // A "does not match" / 409 means the SHA we sent is already stale —
+    // almost always caused by two saves racing each other. Refetch the
+    // real current SHA and try exactly once more before giving up.
+    if (!_isRetry && (putRes.status === 409 || /does not match/i.test(message409))) {
+      return commitFileToRepo(token, path, base64Content, message, true);
+    }
+
+    throw new Error(message409 || `GitHub API error (${putRes.status})`);
   }
 
   return putRes.json();
@@ -361,8 +377,8 @@ function baseKeyFromFilename(filename) {
 
 async function loadKeyListFile(token, path) {
   const res = await fetch(
-    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${REPO_BRANCH}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${REPO_BRANCH}&_=${Date.now()}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' }
   );
   if (res.status === 404) return []; // no picks made yet — that's normal
   if (!res.ok) throw new Error(`Could not load ${path} (status ${res.status})`);
@@ -379,7 +395,7 @@ async function loadKeyListFile(token, path) {
 async function saveKeyListFile(token, path, keys, message) {
   const json = JSON.stringify(keys, null, 2);
   const base64 = btoa(unescape(encodeURIComponent(json)));
-  await commitFileToRepo(token, path, base64, message);
+  return commitFileToRepo(token, path, base64, message);
 }
 
 async function loadFeaturedKeys(token) {
@@ -444,7 +460,7 @@ async function deleteFileFromRepo(token, path, sha, message) {
  * array used as a mutable box so every checkbox on the page shares
  * the same up-to-date list without needing a shared outer variable.
  */
-function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onLabel, offLabel }) {
+function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onLabel, offLabel, queueRef }) {
   const wrap = document.createElement('label');
   wrap.className = 'manage-item__toggle';
   wrap.style.display = 'flex';
@@ -458,7 +474,7 @@ function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onL
   checkbox.type = 'checkbox';
   checkbox.checked = currentKeysRef[0].includes(key);
 
-  checkbox.addEventListener('change', async () => {
+  checkbox.addEventListener('change', () => {
     const token = getToken();
     if (!token) {
       logLine('No GitHub token saved — paste one above first.', 'is-error');
@@ -466,27 +482,42 @@ function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onL
       return;
     }
 
-    const current = currentKeysRef[0];
-
-    if (checkbox.checked && maxCount && current.length >= maxCount && !current.includes(key)) {
-      logLine(`Only ${maxCount} pieces can be ${label.toLowerCase()} at once — uncheck one first.`, 'is-error');
-      checkbox.checked = false;
-      return;
-    }
-
-    const next = checkbox.checked ? [...current, key] : current.filter((k) => k !== key);
-
+    // desired end state captured now, at click time
+    const wantChecked = checkbox.checked;
     checkbox.disabled = true;
-    try {
-      await saveFn(token, next);
-      currentKeysRef[0] = next;
-      logLine(checkbox.checked ? onLabel : offLabel, 'is-success');
-    } catch (err) {
-      logLine(`Failed to update ${label.toLowerCase()}: ${err.message}`, 'is-error');
-      checkbox.checked = !checkbox.checked; // revert on failure
-    } finally {
-      checkbox.disabled = false;
-    }
+
+    // Chain onto this list's queue (shared across every checkbox for the
+    // same file, e.g. all "Visible" boxes) so clicks are applied one at a
+    // time, each computed from the freshest known state — not the state
+    // that existed when the click happened. This is what stops a fast
+    // second click from silently undoing a first click still in flight.
+    queueRef[0] = queueRef[0]
+      .catch(() => {}) // a prior failure shouldn't block the next toggle
+      .then(async () => {
+        const current = currentKeysRef[0];
+        const alreadyIn = current.includes(key);
+
+        if (wantChecked && maxCount && current.length >= maxCount && !alreadyIn) {
+          logLine(`Only ${maxCount} pieces can be ${label.toLowerCase()} at once — uncheck one first.`, 'is-error');
+          checkbox.checked = alreadyIn;
+          checkbox.disabled = false;
+          return;
+        }
+
+        const next = wantChecked ? (alreadyIn ? current : [...current, key]) : current.filter((k) => k !== key);
+
+        try {
+          await saveFn(token, next);
+          currentKeysRef[0] = next;
+          checkbox.checked = wantChecked;
+          logLine(wantChecked ? onLabel : offLabel, 'is-success');
+        } catch (err) {
+          logLine(`Failed to update ${label.toLowerCase()}: ${err.message}`, 'is-error');
+          checkbox.checked = alreadyIn; // revert to whatever it actually was
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
   });
 
   wrap.appendChild(checkbox);
@@ -507,6 +538,9 @@ function renderManageList(files, featuredKeys, visibleKeys) {
   // boxed so the shared checkbox helper can update these in place
   const currentFeaturedRef = [featuredKeys.slice()];
   const currentVisibleRef = [visibleKeys.slice()];
+  // one promise-chain queue per list, shared by every checkbox for that list
+  const featuredQueueRef = [Promise.resolve()];
+  const visibleQueueRef = [Promise.resolve()];
 
   files.forEach((file) => {
     const row = document.createElement('div');
@@ -551,6 +585,7 @@ function renderManageList(files, featuredKeys, visibleKeys) {
         maxCount: MAX_FEATURED,
         onLabel: `Featured ${file.name} on the homepage.`,
         offLabel: `Removed ${file.name} from the homepage.`,
+        queueRef: featuredQueueRef,
       });
 
       visibleLabel = buildToggleCheckbox({
@@ -561,6 +596,7 @@ function renderManageList(files, featuredKeys, visibleKeys) {
         maxCount: null,
         onLabel: `${file.name} is now visible on the Projects page.`,
         offLabel: `${file.name} is now hidden from the Projects page.`,
+        queueRef: visibleQueueRef,
       });
     }
 
