@@ -189,3 +189,47 @@ async function renderGallery(containerSelector, limit, mode) {
     attachArtCardBehavior(container.querySelectorAll('.art-card'));
   }
 }
+
+// ============================================
+// Price category example images (Prices page)
+// Each category (chibi / half body / full body) has at most one
+// picked image, saved from admin.html into its own JSON file.
+// ============================================
+async function loadCategoryKey(filename) {
+  const keys = await loadKeyListFromRaw(filename);
+  return keys.length > 0 ? keys[0] : null;
+}
+
+/**
+ * Replaces the placeholder text in a price-card__image container with
+ * the picked example image for that category, if one has been chosen.
+ * Leaves the existing placeholder text alone if nothing's picked yet
+ * or the image can't be found, so the Prices page never breaks.
+ */
+async function renderCategoryExample(containerSelector, categoryFile) {
+  const container = document.querySelector(containerSelector);
+  if (!container) return;
+
+  let pieces;
+  try {
+    pieces = await loadGalleryPieces();
+  } catch (err) {
+    console.warn('Category example: fetch failed, keeping placeholder', err);
+    return;
+  }
+
+  const key = await loadCategoryKey(categoryFile);
+  if (!key) return; // nothing picked yet — keep placeholder text
+
+  const piece = pieces.find((p) => p.key === key);
+  if (!piece) return; // picked image no longer exists — keep placeholder text
+
+  container.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = piece.stillUrl;
+  img.alt = piece.title;
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'cover';
+  container.appendChild(img);
+}

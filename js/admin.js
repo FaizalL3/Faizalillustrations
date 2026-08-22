@@ -367,7 +367,11 @@ const RAW_BASE_FOR_THUMBS = `https://raw.githubusercontent.com/${REPO_OWNER}/${R
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
 const FEATURED_PATH = `${IMAGES_PATH}/featured.json`;
 const VISIBLE_PATH = `${IMAGES_PATH}/visible.json`;
+const CHIBI_PATH = `${IMAGES_PATH}/chibi.json`;
+const HALFBODY_PATH = `${IMAGES_PATH}/halfbody.json`;
+const FULLBODY_PATH = `${IMAGES_PATH}/fullbody.json`;
 const MAX_FEATURED = 3; // matches the homepage preview grid size
+const MAX_CATEGORY_IMAGE = 1; // one example image per price category
 
 function baseKeyFromFilename(filename) {
   const idx = filename.lastIndexOf('.');
@@ -414,6 +418,27 @@ async function saveVisibleKeys(token, keys) {
   return saveKeyListFile(token, VISIBLE_PATH, keys, 'Update visible pieces via admin panel');
 }
 
+async function loadChibiKeys(token) {
+  return loadKeyListFile(token, CHIBI_PATH);
+}
+async function saveChibiKeys(token, keys) {
+  return saveKeyListFile(token, CHIBI_PATH, keys, 'Update chibi example image via admin panel');
+}
+
+async function loadHalfBodyKeys(token) {
+  return loadKeyListFile(token, HALFBODY_PATH);
+}
+async function saveHalfBodyKeys(token, keys) {
+  return saveKeyListFile(token, HALFBODY_PATH, keys, 'Update half body example image via admin panel');
+}
+
+async function loadFullBodyKeys(token) {
+  return loadKeyListFile(token, FULLBODY_PATH);
+}
+async function saveFullBodyKeys(token, keys) {
+  return saveKeyListFile(token, FULLBODY_PATH, keys, 'Update full body example image via admin panel');
+}
+
 async function fetchImagesFolder(token) {
   const res = await fetch(
     `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${IMAGES_PATH}?ref=${REPO_BRANCH}`,
@@ -423,11 +448,15 @@ async function fetchImagesFolder(token) {
     throw new Error(`Could not list /${IMAGES_PATH} (status ${res.status})`);
   }
   const data = await res.json();
-  return Array.isArray(data)
-    ? data.filter(
-        (f) => f.type === 'file' && f.name !== '.gitkeep' && f.name !== 'featured.json' && f.name !== 'visible.json'
-      )
-    : [];
+  const metaFiles = new Set([
+    '.gitkeep',
+    'featured.json',
+    'visible.json',
+    'chibi.json',
+    'halfbody.json',
+    'fullbody.json',
+  ]);
+  return Array.isArray(data) ? data.filter((f) => f.type === 'file' && !metaFiles.has(f.name)) : [];
 }
 
 async function deleteFileFromRepo(token, path, sha, message) {
@@ -525,7 +554,7 @@ function buildToggleCheckbox({ label, key, currentKeysRef, saveFn, maxCount, onL
   return wrap;
 }
 
-function renderManageList(files, featuredKeys, visibleKeys) {
+function renderManageList(files, featuredKeys, visibleKeys, chibiKeys, halfBodyKeys, fullBodyKeys) {
   manageList.innerHTML = '';
 
   if (files.length === 0) {
@@ -538,9 +567,15 @@ function renderManageList(files, featuredKeys, visibleKeys) {
   // boxed so the shared checkbox helper can update these in place
   const currentFeaturedRef = [featuredKeys.slice()];
   const currentVisibleRef = [visibleKeys.slice()];
+  const currentChibiRef = [chibiKeys.slice()];
+  const currentHalfBodyRef = [halfBodyKeys.slice()];
+  const currentFullBodyRef = [fullBodyKeys.slice()];
   // one promise-chain queue per list, shared by every checkbox for that list
   const featuredQueueRef = [Promise.resolve()];
   const visibleQueueRef = [Promise.resolve()];
+  const chibiQueueRef = [Promise.resolve()];
+  const halfBodyQueueRef = [Promise.resolve()];
+  const fullBodyQueueRef = [Promise.resolve()];
 
   files.forEach((file) => {
     const row = document.createElement('div');
@@ -566,14 +601,20 @@ function renderManageList(files, featuredKeys, visibleKeys) {
     info.appendChild(name);
     info.appendChild(meta);
 
-    // Featured + Visible checkboxes — only stills get one; a timelapse
-    // video rides along with its still automatically and isn't picked
-    // separately.
-    //   Featured -> shows in the homepage's 3-card preview (max 3)
-    //   Visible  -> shows on the full Projects page at all (no cap;
-    //               unchecked pieces stay hidden from Projects entirely)
+    // Featured + Visible + the three price-category example pickers —
+    // only stills get these; a timelapse video rides along with its
+    // still automatically and isn't picked separately.
+    //   Featured        -> homepage's 3-card preview (max 3)
+    //   Visible         -> shows on the full Projects page at all (no cap;
+    //                      unchecked pieces stay hidden from Projects entirely)
+    //   Chibi example / Half Body example / Full Body example
+    //                   -> the single sample image shown for that category
+    //                      on the Prices page (max 1 each)
     let featuredLabel = null;
     let visibleLabel = null;
+    let chibiLabel = null;
+    let halfBodyLabel = null;
+    let fullBodyLabel = null;
     if (isImage) {
       const key = baseKeyFromFilename(file.name);
 
@@ -597,6 +638,39 @@ function renderManageList(files, featuredKeys, visibleKeys) {
         onLabel: `${file.name} is now visible on the Projects page.`,
         offLabel: `${file.name} is now hidden from the Projects page.`,
         queueRef: visibleQueueRef,
+      });
+
+      chibiLabel = buildToggleCheckbox({
+        label: 'Chibi example',
+        key,
+        currentKeysRef: currentChibiRef,
+        saveFn: saveChibiKeys,
+        maxCount: MAX_CATEGORY_IMAGE,
+        onLabel: `${file.name} is now the Chibi example on the Prices page.`,
+        offLabel: `Removed ${file.name} as the Chibi example.`,
+        queueRef: chibiQueueRef,
+      });
+
+      halfBodyLabel = buildToggleCheckbox({
+        label: 'Half Body example',
+        key,
+        currentKeysRef: currentHalfBodyRef,
+        saveFn: saveHalfBodyKeys,
+        maxCount: MAX_CATEGORY_IMAGE,
+        onLabel: `${file.name} is now the Half Body example on the Prices page.`,
+        offLabel: `Removed ${file.name} as the Half Body example.`,
+        queueRef: halfBodyQueueRef,
+      });
+
+      fullBodyLabel = buildToggleCheckbox({
+        label: 'Full Body example',
+        key,
+        currentKeysRef: currentFullBodyRef,
+        saveFn: saveFullBodyKeys,
+        maxCount: MAX_CATEGORY_IMAGE,
+        onLabel: `${file.name} is now the Full Body example on the Prices page.`,
+        offLabel: `Removed ${file.name} as the Full Body example.`,
+        queueRef: fullBodyQueueRef,
       });
     }
 
@@ -641,31 +715,30 @@ function renderManageList(files, featuredKeys, visibleKeys) {
           manageStatus.className = 'token-status';
         }
 
-        // A deleted image can't stay marked Featured/Visible — clean up
-        // its key from both lists so it doesn't linger as a "ghost"
-        // entry that silently counts against the featured limit.
+        // A deleted image can't stay marked in any of these lists — clean
+        // up its key from all of them so it doesn't linger as a "ghost"
+        // entry that silently counts against a checkbox's limit.
         if (isImage) {
           const deletedKey = baseKeyFromFilename(file.name);
-          if (currentFeaturedRef[0].includes(deletedKey)) {
-            const cleaned = currentFeaturedRef[0].filter((k) => k !== deletedKey);
-            featuredQueueRef[0] = featuredQueueRef[0]
+          const listsToClean = [
+            { ref: currentFeaturedRef, queueRef: featuredQueueRef, saveFn: saveFeaturedKeys, label: 'featured' },
+            { ref: currentVisibleRef, queueRef: visibleQueueRef, saveFn: saveVisibleKeys, label: 'visible' },
+            { ref: currentChibiRef, queueRef: chibiQueueRef, saveFn: saveChibiKeys, label: 'Chibi example' },
+            { ref: currentHalfBodyRef, queueRef: halfBodyQueueRef, saveFn: saveHalfBodyKeys, label: 'Half Body example' },
+            { ref: currentFullBodyRef, queueRef: fullBodyQueueRef, saveFn: saveFullBodyKeys, label: 'Full Body example' },
+          ];
+
+          listsToClean.forEach(({ ref, queueRef, saveFn, label }) => {
+            if (!ref[0].includes(deletedKey)) return;
+            const cleaned = ref[0].filter((k) => k !== deletedKey);
+            queueRef[0] = queueRef[0]
               .catch(() => {})
-              .then(() => saveFeaturedKeys(token, cleaned))
+              .then(() => saveFn(token, cleaned))
               .then(() => {
-                currentFeaturedRef[0] = cleaned;
+                ref[0] = cleaned;
               })
-              .catch((err) => logLine(`Failed to clean up featured entry for ${file.name}: ${err.message}`, 'is-error'));
-          }
-          if (currentVisibleRef[0].includes(deletedKey)) {
-            const cleaned = currentVisibleRef[0].filter((k) => k !== deletedKey);
-            visibleQueueRef[0] = visibleQueueRef[0]
-              .catch(() => {})
-              .then(() => saveVisibleKeys(token, cleaned))
-              .then(() => {
-                currentVisibleRef[0] = cleaned;
-              })
-              .catch((err) => logLine(`Failed to clean up visible entry for ${file.name}: ${err.message}`, 'is-error'));
-          }
+              .catch((err) => logLine(`Failed to clean up ${label} entry for ${file.name}: ${err.message}`, 'is-error'));
+          });
         }
       } catch (err) {
         logLine(`Failed to delete ${file.name}: ${err.message}`, 'is-error');
@@ -680,6 +753,9 @@ function renderManageList(files, featuredKeys, visibleKeys) {
     row.appendChild(info);
     if (featuredLabel) row.appendChild(featuredLabel);
     if (visibleLabel) row.appendChild(visibleLabel);
+    if (chibiLabel) row.appendChild(chibiLabel);
+    if (halfBodyLabel) row.appendChild(halfBodyLabel);
+    if (fullBodyLabel) row.appendChild(fullBodyLabel);
     row.appendChild(deleteBtn);
     manageList.appendChild(row);
   });
@@ -690,37 +766,40 @@ async function loadManageList() {
   manageStatus.textContent = 'Loading…';
   manageStatus.className = 'token-status';
 
+  const lists = [
+    { load: loadFeaturedKeys, save: saveFeaturedKeys, label: 'featured' },
+    { load: loadVisibleKeys, save: saveVisibleKeys, label: 'visible' },
+    { load: loadChibiKeys, save: saveChibiKeys, label: 'Chibi example' },
+    { load: loadHalfBodyKeys, save: saveHalfBodyKeys, label: 'Half Body example' },
+    { load: loadFullBodyKeys, save: saveFullBodyKeys, label: 'Full Body example' },
+  ];
+
   try {
-    const [files, featuredKeys, visibleKeys] = await Promise.all([
+    const [files, ...rawKeyLists] = await Promise.all([
       fetchImagesFolder(token),
-      loadFeaturedKeys(token).catch(() => []),
-      loadVisibleKeys(token).catch(() => []),
+      ...lists.map((l) => l.load(token).catch(() => [])),
     ]);
 
     // Self-heal: drop any stored key that no longer matches a real image
     // (e.g. left behind by a file deleted before this cleanup existed,
     // or deleted outside admin.html entirely). These "ghost" entries
-    // otherwise silently count against the featured limit even though
+    // otherwise silently count against a checkbox's limit even though
     // nothing on screen shows them checked.
     const validKeys = new Set(files.filter((f) => IMAGE_EXT_RE.test(f.name)).map((f) => baseKeyFromFilename(f.name)));
 
-    const cleanedFeatured = featuredKeys.filter((k) => validKeys.has(k));
-    const cleanedVisible = visibleKeys.filter((k) => validKeys.has(k));
+    const cleanedKeyLists = rawKeyLists.map((keys, i) => {
+      const cleaned = keys.filter((k) => validKeys.has(k));
+      if (token && cleaned.length !== keys.length) {
+        const removed = keys.length - cleaned.length;
+        const { save, label } = lists[i];
+        save(token, cleaned)
+          .then(() => logLine(`Cleaned up ${removed} stale ${label} entr${removed === 1 ? 'y' : 'ies'}.`, 'is-success'))
+          .catch((err) => logLine(`Could not clean up stale ${label} entries: ${err.message}`, 'is-error'));
+      }
+      return cleaned;
+    });
 
-    if (token && cleanedFeatured.length !== featuredKeys.length) {
-      const removed = featuredKeys.length - cleanedFeatured.length;
-      saveFeaturedKeys(token, cleanedFeatured)
-        .then(() => logLine(`Cleaned up ${removed} stale featured entr${removed === 1 ? 'y' : 'ies'}.`, 'is-success'))
-        .catch((err) => logLine(`Could not clean up stale featured entries: ${err.message}`, 'is-error'));
-    }
-    if (token && cleanedVisible.length !== visibleKeys.length) {
-      const removed = visibleKeys.length - cleanedVisible.length;
-      saveVisibleKeys(token, cleanedVisible)
-        .then(() => logLine(`Cleaned up ${removed} stale visible entr${removed === 1 ? 'y' : 'ies'}.`, 'is-success'))
-        .catch((err) => logLine(`Could not clean up stale visible entries: ${err.message}`, 'is-error'));
-    }
-
-    renderManageList(files, cleanedFeatured, cleanedVisible);
+    renderManageList(files, ...cleanedKeyLists);
   } catch (err) {
     manageStatus.textContent = `Could not load files: ${err.message}`;
     manageStatus.className = 'token-status is-error';

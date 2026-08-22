@@ -126,7 +126,7 @@
 
         <div class="price-grid">
           <div class="price-card">
-            <div class="price-card__image">Chibi example</div>
+            <div class="price-card__image" id="chibi-example">Chibi example</div>
             <div class="price-card__body">
               <h3 class="price-card__name">Chibi</h3>
               <p class="price-card__amount">$25</p>
@@ -135,7 +135,7 @@
           </div>
 
           <div class="price-card">
-            <div class="price-card__image">Half body example</div>
+            <div class="price-card__image" id="halfbody-example">Half body example</div>
             <div class="price-card__body">
               <h3 class="price-card__name">Half Body</h3>
               <p class="price-card__amount">$55</p>
@@ -144,7 +144,7 @@
           </div>
 
           <div class="price-card">
-            <div class="price-card__image">Full body example</div>
+            <div class="price-card__image" id="fullbody-example">Full body example</div>
             <div class="price-card__body">
               <h3 class="price-card__name">Full Body</h3>
               <p class="price-card__amount">$80</p>
@@ -171,5 +171,11 @@
   </footer>
 
   <script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script>
+    renderCategoryExample('#chibi-example', 'chibi.json');
+    renderCategoryExample('#halfbody-example', 'halfbody.json');
+    renderCategoryExample('#fullbody-example', 'fullbody.json');
+  </script>
 </body>
 </html>
