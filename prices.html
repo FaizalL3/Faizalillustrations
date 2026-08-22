@@ -23,7 +23,7 @@
     .price-card {
       border: 1px solid var(--line);
       border-radius: 4px;
-      overflow: hidden;
+      overflow: visible;
       display: flex;
       flex-direction: column;
       transition: border-color 0.2s var(--ease);
@@ -41,10 +41,30 @@
       justify-content: center;
       color: var(--muted);
       font-size: 0.85rem;
+      border-radius: 4px 4px 0 0;
+      position: relative;
+      transform-origin: center;
+      transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+    }
+
+    .price-card__image img {
+      border-radius: inherit;
+    }
+
+    .price-card:hover .price-card__image {
+      transform: scale(1.08);
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
+      z-index: 2;
     }
 
     .price-card__body {
       padding: var(--space-md);
+      position: relative;
+      transition: padding 0.3s var(--ease);
+    }
+
+    .price-card:hover .price-card__body {
+      padding: calc(var(--space-md) + 0.4rem) var(--space-md);
     }
 
     .price-card__name {
@@ -64,6 +84,12 @@
     .price-card__desc {
       color: var(--muted);
       font-size: 0.9rem;
+      transition: font-size 0.3s var(--ease), color 0.3s var(--ease);
+    }
+
+    .price-card:hover .price-card__desc {
+      font-size: 1rem;
+      color: var(--paper);
     }
 
     .extra-panel {
